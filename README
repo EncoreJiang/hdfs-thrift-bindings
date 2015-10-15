@@ -1,0 +1,16 @@
+Thrift hdfs bindings
+
+At some places the possibility to use hdfs over thrift is mentioned. I was under the impression that this would mean hdfs comes bundled with a thrift service, but I have not been able to find anything like that.
+
+So for the moment (until someone points me in the right direction), this is a naive implementation of this. As of now I doubt that it will ever be complete, as I will probably only implement what I need myself (for starters: ls, basic read/write etc will follow) - and I have not yet thought about thread management, which might prove to be a minor paint on its own ...
+
+So, use with care ...
+
+1) generate.bash
+
+... generates the Thrift classes from an api I stole from another old hdfs thrift project (https://github.com/semk/HadoopFS) - I have neither a clue if this is the original thrift hdfs specification that is not officially linked anywhere, nor if it is still valid/good practice (well, the api as is produces warnings, so thats one clue ...).
+The script assumes a thrift compiler linked to ./thrift-compiler. I was using 0.9.3.
+
+2) I did not bother to make this nice for shared development, I just dumped my eclipse configuration and all dependencies in binary ... import an eclipse project or you are on your own.
+
+

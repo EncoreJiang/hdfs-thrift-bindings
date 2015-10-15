@@ -1,4 +1,4 @@
-package org.apache.hadoop.fs.thrift;
+package org.apache.hadoop.fs.thriftfs;
 
 import java.io.IOException;
 

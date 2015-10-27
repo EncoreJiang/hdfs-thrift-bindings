@@ -22,23 +22,32 @@ public class RunHdfsServer {
 
     public static void main( final String[] args ) {
 
-        final HdfsService service = new HdfsService( new HdfsConfig( "localhost", 8020 ) );
+        if ( args.length != 3 ) {
+            System.out.println( "Usage: " + RunHdfsServer.class.getSimpleName() + " <service-port> <hdfs-host> <hdfs-port>" );
+            System.exit( 1 );
+        }
+
+        final int servicePort = Integer.parseInt( args[0] );
+        final String hdfsHost = args[1];
+        final int hdfsPort = Integer.parseInt( args[2] );
+
+        final HdfsService service = new HdfsService( new HdfsConfig( hdfsHost, hdfsPort ) );
         final Processor<Iface> processor = new ThriftHadoopFileSystem.Processor<Iface>( service );
 
         new Thread( new Runnable() {
             @Override
             public void run() {
-                runServerProcess( processor );
+                runServerProcess( processor, servicePort );
             }
         } ).start();
 
     }
 
-    private static void runServerProcess( final Processor<Iface> processor ) {
+    private static void runServerProcess( final Processor<Iface> processor, final int port ) {
 
         TServerTransport serverTransport;
         try {
-            serverTransport = new TServerSocket( 55555 );
+            serverTransport = new TServerSocket( port );
         } catch ( final TTransportException e ) {
             throw new IOError( e );
         }

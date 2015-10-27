@@ -1,3 +1,4 @@
 bin
 src-gen
 thrift-compiler
+hdfs-thrift-server.jar

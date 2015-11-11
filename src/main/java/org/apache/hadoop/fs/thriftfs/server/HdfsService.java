@@ -61,7 +61,7 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
 
     @Override
     public boolean close( final ThriftHandle out ) throws ThriftIOException, TException {
-        // FIXME is this meant only for writng data? how can we distinguish resources for reading and writing??? (API problem?)
+        // FIXME is this meant only for reading or writing data? how can we distinguish resources for reading and writing??? (API problem?)
         System.out.println( "releasing handle stream: " + out.getId() );
         return _readStreamStore.release( out.getId() );
         // TODO additional hdfs close necessary?
@@ -130,9 +130,11 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
     @Override
     public ThriftHandle open( final Pathname pathname ) throws ThriftIOException, TException {
         final FileSystem fs = Utils.tryToGetFileSystem( _config );
+        final Path path = Utils.toPath( pathname );
         try {
-            final FSDataInputStream stream = fs.open( Utils.toPath( pathname ) );
-            System.out.println( "creating new handle stream" );
+            final Path fullPath = fs.resolvePath( path ); //  optional: check early (before doing it implicit while opening) that the path exists
+            final FSDataInputStream stream = fs.open( fullPath );
+            System.out.println( "creating new handle stream on " + pathname.getPathname() );
             return new ThriftHandle( _readStreamStore.storeNew( stream ) );
         } catch ( final IOException e ) {
             throw Utils.wrapAsThriftException( e );
@@ -261,6 +263,15 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
         private final Map<Long, RESOURCE_TYPE> _store = new HashMap<Long, RESOURCE_TYPE>();
         private long _lastAssignedId = FIRST_ID - 1;
 
+        ResourceByIdStore() {
+            Runtime.getRuntime().addShutdownHook( new Thread() {
+                @Override
+                public void run() {
+                    cleanup();
+                }
+            } );
+        }
+
         long storeNew( final RESOURCE_TYPE res ) {
             final long nextId = nextId();
             final Long nextKey = keyOf( nextId );
@@ -302,6 +313,12 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
 
         private static Long keyOf( final long l ) {
             return Long.valueOf( l );
+        }
+
+        private void cleanup() {
+            for ( final Long id : _store.keySet() ) {
+                release( id.longValue() );
+            }
         }
 
     }

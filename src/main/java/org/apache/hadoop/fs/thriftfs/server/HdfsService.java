@@ -59,9 +59,9 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
         throw new UnsupportedOperationException( "Not supported by thrift service." );
     }
 
+    // FIXME is this meant only for reading or writing data? how can we distinguish resources for reading and writing??? (API problem?)
     @Override
     public boolean close( final ThriftHandle out ) throws ThriftIOException, TException {
-        // FIXME is this meant only for reading or writing data? how can we distinguish resources for reading and writing??? (API problem?)
         System.out.println( "releasing handle stream: " + out.getId() );
         return _readStreamStore.release( out.getId() );
         // TODO additional hdfs close necessary?
@@ -91,7 +91,6 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
 
     @Override
     public List<FileStatus> listStatus( final Pathname pathname ) throws ThriftIOException, TException {
-        System.out.println( "doing listStatus on " + pathname );
         final FileSystem fs = Utils.tryToGetFileSystem( _config );
         final List<FileStatus> result = new ArrayList<FileStatus>();
         try {
@@ -145,18 +144,16 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
     @Override
     public String read( final ThriftHandle handle, final long offset, final int size ) throws ThriftIOException, TException {
         final FSDataInputStream stream = _readStreamStore.getResource( handle.getId() );
-        final byte[] res = new byte[size];
         if ( offset > Integer.MAX_VALUE ) {
             throw new IllegalArgumentException( "long offset not supported yet by thrift service" );
         }
-        final int off = Long.valueOf( offset ).intValue();
-        final int numRead;
+        byte[] res;
         try {
-            numRead = stream.read( res, off, size );
+            res = IOUtils.toByteArray( stream );
         } catch ( final IOException e ) {
             throw Utils.wrapAsThriftException( e );
         }
-        final byte[] result = Arrays.copyOf( res, numRead );
+        final byte[] result = Arrays.copyOf( res, res.length );
         return new String( result );
     }
 
@@ -205,7 +202,6 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
         }
 
         String hdfsPath() {
-            // TODO Auto-generated method stub
             return "hdfs://" + _host + ":" + _port;
         }
 
@@ -282,6 +278,7 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
             if ( previous != null ) {
                 System.err.println( "destroyed other resource while creating new!" );
             }
+            System.out.println( "Allocated resources: " + _store.size() );
             return nextId;
         }
 
@@ -295,16 +292,25 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
                 return false;
             }
             IOUtils.closeQuietly( res );
+            _store.remove( keyOf( id ) );
+            System.out.println( "Remaining resources: " + _store.size() );
             return true;
         }
 
         private long nextId() {
             long nextId = _lastAssignedId + 1;
+            boolean overflow = false;
             while ( _store.containsKey( keyOf( nextId ) ) ) {
                 if ( nextId < Long.MAX_VALUE ) {
                     nextId++;
                 } else {
-                    nextId = FIRST_ID;
+                    if ( !overflow ) {
+                        nextId = FIRST_ID;
+                        overflow = true;
+                    } else {
+                        System.err.println( "FATAL: no free ids remaining" );
+                        System.exit( 1 );
+                    }
                 }
             }
             _lastAssignedId = nextId;

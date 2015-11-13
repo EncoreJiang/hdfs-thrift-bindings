@@ -86,7 +86,29 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
     @Override
     public List<BlockLocation> getFileBlockLocations( final Pathname pathname, final long start, final long length )
         throws ThriftIOException, TException {
-        throw new UnsupportedOperationException( "Not supported by thrift service." );
+        final Path path = Utils.toPath( pathname );
+        final FileSystem fs = Utils.tryToGetFileSystem( _config );
+        final List<BlockLocation> result = new ArrayList<BlockLocation>();
+        try {
+            for ( final org.apache.hadoop.fs.BlockLocation bl : fs.getFileBlockLocations( path, start, length ) ) {
+                result.add( convertBlockLocation( bl ) );
+            }
+        } catch ( final IOException e ) {
+            throw Utils.wrapAsThriftException( e );
+        }
+        return result;
+    }
+
+    private static BlockLocation convertBlockLocation( final org.apache.hadoop.fs.BlockLocation bl ) throws IOException {
+        final BlockLocation blockLocation = new BlockLocation();
+        blockLocation.setHosts( Arrays.asList( bl.getHosts() ) );
+        blockLocation.setHostsIsSet( true );
+        blockLocation.setLength( bl.getLength() );
+        blockLocation.setNames( Arrays.asList( bl.getNames() ) );
+        blockLocation.setNamesIsSet( true );
+        blockLocation.setOffset( bl.getOffset() );
+        blockLocation.setOffsetIsSet( true );
+        return blockLocation;
     }
 
     @Override

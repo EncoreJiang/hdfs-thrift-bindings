@@ -13,5 +13,6 @@
     <selectedElements exportClassFiles="true" exportJavaFiles="false" exportOutputFolder="false">
         <javaElement handleIdentifier="=hdfs-thrift-bindings/src\/main\/java&lt;org.apache.hadoop.fs.thriftfs.server"/>
         <javaElement handleIdentifier="=hdfs-thrift-bindings/src-gen\/main\/java"/>
+        <file path="/hdfs-thrift-bindings/log4j.properties"/>
     </selectedElements>
 </jardesc>

@@ -5,6 +5,7 @@ import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -15,10 +16,12 @@ import java.util.Map;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.CompressionCodecFactory;
+import org.apache.hadoop.io.compress.CompressionOutputStream;
 import org.apache.hadoop.thriftfs.api.BlockLocation;
 import org.apache.hadoop.thriftfs.api.FileStatus;
 import org.apache.hadoop.thriftfs.api.Pathname;
@@ -26,6 +29,8 @@ import org.apache.hadoop.thriftfs.api.ThriftHadoopFileSystem;
 import org.apache.hadoop.thriftfs.api.ThriftHandle;
 import org.apache.hadoop.thriftfs.api.ThriftIOException;
 import org.apache.thrift.TException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A thrift server implementing hdfs bindings.
@@ -40,8 +45,11 @@ import org.apache.thrift.TException;
  */
 final class HdfsService implements ThriftHadoopFileSystem.Iface {
 
+    private static final Logger LOG = LoggerFactory.getLogger( HdfsService.class );
+
     private final HdfsConfig _config;
     private final ResourceByIdStore<InputStream> _readStreamStore = new ResourceByIdStore<InputStream>();
+    private final ResourceByIdStore<OutputStream> _writeStreamStore = new ResourceByIdStore<OutputStream>();
 
     public HdfsService( final HdfsConfig config ) {
         _config = config;
@@ -62,7 +70,6 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
         throw new UnsupportedOperationException( "Not supported by thrift service." );
     }
 
-    // FIXME is this meant only for reading or writing data? how can we distinguish resources for reading and writing??? (API problem?)
     @Override
     public boolean close( final ThriftHandle out ) throws ThriftIOException, TException {
         System.out.println( "releasing handle stream: " + out.getId() );
@@ -72,7 +79,27 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
 
     @Override
     public ThriftHandle create( final Pathname pathname ) throws ThriftIOException, TException {
-        throw new UnsupportedOperationException( "Not supported by thrift service." );
+        final FileSystem fs = Utils.tryToGetFileSystem( _config );
+        final Path path = Utils.toPath( pathname );
+        try {
+            final OutputStream stream = openOutputStream( pathname, fs, path );
+            return new ThriftHandle( _writeStreamStore.storeNew( stream ) );
+        } catch ( final IOException e ) {
+            throw Utils.wrapAsThriftException( e );
+        }
+    }
+
+    private OutputStream openOutputStream( final Pathname pathname, final FileSystem fs, final Path fullPath ) throws IOException {
+        LOG.info( "creating new write handle for: " + pathname.getPathname() );
+        final FSDataOutputStream stream = fs.create( fullPath );
+        final Configuration conf = new Configuration();
+        final CompressionCodecFactory factory = new CompressionCodecFactory( conf );
+        final CompressionCodec codec = factory.getCodec( fullPath );
+        if ( codec == null ) {
+            return stream;
+        }
+        final CompressionOutputStream compressedStream = codec.createOutputStream( stream );
+        return compressedStream;
     }
 
     @Override
@@ -151,21 +178,25 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
         throw new UnsupportedOperationException( "Not supported by thrift service." );
     }
 
+    /**
+     * See thrift definition: open for reading only.
+     */
     @Override
     public ThriftHandle open( final Pathname pathname ) throws ThriftIOException, TException {
         final FileSystem fs = Utils.tryToGetFileSystem( _config );
         final Path path = Utils.toPath( pathname );
         try {
             final Path fullPath = fs.resolvePath( path ); //  optional: check early (before doing it implicit while opening) that the path exists
-            final InputStream stream = openStream( pathname, fs, fullPath );
+            final InputStream stream = openInputStream( pathname, fs, fullPath );
             return new ThriftHandle( _readStreamStore.storeNew( stream ) );
         } catch ( final IOException e ) {
             throw Utils.wrapAsThriftException( e );
         }
     }
 
-    private InputStream openStream( final Pathname pathname, final FileSystem fs, final Path fullPath ) throws IOException {
-        System.out.println( "creating new handle stream on " + pathname.getPathname() );
+    private static InputStream openInputStream( final Pathname pathname, final FileSystem fs, final Path fullPath )
+        throws IOException {
+        LOG.info( "creating new read handle for: " + pathname.getPathname() );
         final FSDataInputStream stream = fs.open( fullPath );
         final Configuration conf = new Configuration();
         final CompressionCodecFactory factory = new CompressionCodecFactory( conf );
@@ -181,6 +212,9 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
     @Override
     public String read( final ThriftHandle handle, final long offset, final int size ) throws ThriftIOException, TException {
         final InputStream stream = _readStreamStore.getResource( handle.getId() );
+        if ( stream == null ) {
+            throw new ThriftIOException( "unknown read handle: " + handle.getId() );
+        }
         if ( offset > Integer.MAX_VALUE ) {
             throw new IllegalArgumentException( "long offset not supported yet by thrift service" );
         }
@@ -224,9 +258,23 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
         throw new UnsupportedOperationException( "Not supported by thrift service." );
     }
 
+    /**
+     * As the common exceptions are handled as such, I am quite unsure, what the
+     * return value is meant for in that stolen API description. Returns false
+     * if the handle id is unknown.
+     */
     @Override
     public boolean write( final ThriftHandle handle, final String data ) throws ThriftIOException, TException {
-        throw new UnsupportedOperationException( "Not supported by thrift service." );
+        final OutputStream stream = _writeStreamStore.getResource( handle.getId() );
+        if ( stream == null ) {
+            return false;
+        }
+        try {
+            stream.write( data.getBytes() );
+        } catch ( final IOException e ) {
+            throw Utils.wrapAsThriftException( e );
+        }
+        return true;
     }
 
     static class HdfsConfig {

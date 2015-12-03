@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,6 +17,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.compress.CompressionCodec;
+import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.apache.hadoop.thriftfs.api.BlockLocation;
 import org.apache.hadoop.thriftfs.api.FileStatus;
 import org.apache.hadoop.thriftfs.api.Pathname;
@@ -38,7 +41,7 @@ import org.apache.thrift.TException;
 final class HdfsService implements ThriftHadoopFileSystem.Iface {
 
     private final HdfsConfig _config;
-    private final ResourceByIdStore<FSDataInputStream> _readStreamStore = new ResourceByIdStore<FSDataInputStream>();
+    private final ResourceByIdStore<InputStream> _readStreamStore = new ResourceByIdStore<InputStream>();
 
     public HdfsService( final HdfsConfig config ) {
         _config = config;
@@ -154,18 +157,30 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
         final Path path = Utils.toPath( pathname );
         try {
             final Path fullPath = fs.resolvePath( path ); //  optional: check early (before doing it implicit while opening) that the path exists
-            final FSDataInputStream stream = fs.open( fullPath );
-            System.out.println( "creating new handle stream on " + pathname.getPathname() );
+            final InputStream stream = openStream( pathname, fs, fullPath );
             return new ThriftHandle( _readStreamStore.storeNew( stream ) );
         } catch ( final IOException e ) {
             throw Utils.wrapAsThriftException( e );
         }
     }
 
+    private InputStream openStream( final Pathname pathname, final FileSystem fs, final Path fullPath ) throws IOException {
+        System.out.println( "creating new handle stream on " + pathname.getPathname() );
+        final FSDataInputStream stream = fs.open( fullPath );
+        final Configuration conf = new Configuration();
+        final CompressionCodecFactory factory = new CompressionCodecFactory( conf );
+        final CompressionCodec codec = factory.getCodec( fullPath );
+        if ( codec == null ) {
+            return stream;
+        }
+        final InputStream uncompressedStream = codec.createInputStream( stream );
+        return uncompressedStream;
+    }
+
     // FIXME: API: shouldn't this be of some binary return type (string encoding)???
     @Override
     public String read( final ThriftHandle handle, final long offset, final int size ) throws ThriftIOException, TException {
-        final FSDataInputStream stream = _readStreamStore.getResource( handle.getId() );
+        final InputStream stream = _readStreamStore.getResource( handle.getId() );
         if ( offset > Integer.MAX_VALUE ) {
             throw new IllegalArgumentException( "long offset not supported yet by thrift service" );
         }

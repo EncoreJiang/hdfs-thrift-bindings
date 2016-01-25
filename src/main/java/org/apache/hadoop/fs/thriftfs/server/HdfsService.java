@@ -295,6 +295,11 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
             return "hdfs://" + _host + ":" + _port;
         }
 
+        @Override
+        public String toString() {
+            return _host + ":" + _port;
+        }
+
     }
 
     private static final class Utils {

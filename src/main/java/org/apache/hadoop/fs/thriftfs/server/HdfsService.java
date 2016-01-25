@@ -87,6 +87,7 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
         final FileSystem fs = Utils.tryToGetFileSystem( _config );
         final Path path = Utils.toPath( pathname );
         try {
+            LOG.info( "creating new write handle on " + _config + " for: " + pathname.getPathname() );
             final OutputStream stream = openOutputStream( pathname, fs, path );
             return new ThriftHandle( _writeStreamStore.storeNew( stream ) );
         } catch ( final IOException e ) {
@@ -95,7 +96,6 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
     }
 
     private OutputStream openOutputStream( final Pathname pathname, final FileSystem fs, final Path fullPath ) throws IOException {
-        LOG.info( "creating new write handle for: " + pathname.getPathname() );
         final FSDataOutputStream stream = fs.create( fullPath );
         final Configuration conf = new Configuration();
         final CompressionCodecFactory factory = new CompressionCodecFactory( conf );
@@ -192,6 +192,7 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
         final Path path = Utils.toPath( pathname );
         try {
             final Path fullPath = fs.resolvePath( path ); //  optional: check early (before doing it implicit while opening) that the path exists
+            LOG.info( "creating new read handle on " + _config + " for: " + pathname.getPathname() );
             final InputStream stream = openInputStream( pathname, fs, fullPath );
             return new ThriftHandle( _readStreamStore.storeNew( stream ) );
         } catch ( final IOException e ) {
@@ -201,7 +202,6 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
 
     private static InputStream openInputStream( final Pathname pathname, final FileSystem fs, final Path fullPath )
         throws IOException {
-        LOG.info( "creating new read handle for: " + pathname.getPathname() );
         final FSDataInputStream stream = fs.open( fullPath );
         final Configuration conf = new Configuration();
         final CompressionCodecFactory factory = new CompressionCodecFactory( conf );

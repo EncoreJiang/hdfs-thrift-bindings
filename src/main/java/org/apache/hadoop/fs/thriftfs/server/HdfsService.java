@@ -71,10 +71,15 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
     }
 
     @Override
-    public boolean close( final ThriftHandle out ) throws ThriftIOException, TException {
+    public boolean closeReadHandle( final ThriftHandle out ) throws ThriftIOException, TException {
         System.out.println( "releasing handle stream: " + out.getId() );
         return _readStreamStore.release( out.getId() );
-        // TODO additional hdfs close necessary?
+    }
+
+    @Override
+    public boolean closeWriteHandle( final ThriftHandle in ) throws ThriftIOException, TException {
+        System.out.println( "releasing handle stream: " + in.getId() );
+        return _writeStreamStore.release( in.getId() );
     }
 
     @Override
@@ -374,6 +379,7 @@ final class HdfsService implements ThriftHadoopFileSystem.Iface {
         boolean release( final long id ) {
             final RESOURCE_TYPE res = _store.get( keyOf( id ) );
             if ( res == null ) {
+                System.out.println( "Cannot close unknown resource: " + id );
                 return false;
             }
             IOUtils.closeQuietly( res );

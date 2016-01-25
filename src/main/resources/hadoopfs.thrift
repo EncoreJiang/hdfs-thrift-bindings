@@ -90,8 +90,11 @@ service ThriftHadoopFileSystem
   // read some bytes from the open handle for the file
   string read(1:ThriftHandle handle, i64 offset, i32 size) throws (1:ThriftIOException ouch),
 
-  // close file
-  bool close(1:ThriftHandle out) throws (1:ThriftIOException ouch),
+  // close file opened for reading
+  bool closeReadHandle(1:ThriftHandle out) throws (1:ThriftIOException ouch),
+
+  // close file opened for writing
+  bool closeWriteHandle(1:ThriftHandle out) throws (1:ThriftIOException ouch),
 
   // delete file(s) or directory(s)
   bool rm(1:Pathname path, 2:bool recursive) throws (1:ThriftIOException ouch),
